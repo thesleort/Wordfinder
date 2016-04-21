@@ -1,0 +1,9 @@
+Troels Blicher Petersen
+
+1. Create thread for each core.
+2. Start "recursing" through top/root folders.
+	- Save stats locally in thread.
+3. Tell some object which folders are being looked through.
+	- When done, start looking through next none-checked folder.
+4. When no more folders, submit stats to an object.
+	- Add all stats.

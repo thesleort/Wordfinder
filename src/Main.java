@@ -27,11 +27,13 @@ public class Main {
 //        wordToFind = "test";
         System.out.println(cores);
         Path path = Paths.get(System.getProperty("user.dir"));
-        Path cpath = Paths.get("/home/troels");
+        Path cpath = Paths.get("/home/troels/");
 //        doAndMeasure("Great!");
         findAll("if", cpath);
 //        System.out.println("Working Directory = " +
-//                System.getProperty("user.dir"));
+//                System.getProperty("user.dir")); 18187 ms 1216283 results - 18121 ms 1216283 results - 16464 ms 1216283 results
+
+
 
 
         //            pool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
@@ -79,6 +81,7 @@ public class Main {
                 pool.submit(() -> wordCounter(thisLine, word, currentLine, file));
                 ln++;
             }
+            reader.close();
         } else {
             pool.submit(() -> {
                 try {
@@ -117,6 +120,7 @@ public class Main {
             }
             ln++;
         }
+        reader.close();
         synchronized (rList) {
             rListLong.addAll(localAL);
         }

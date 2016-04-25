@@ -3,56 +3,150 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.stream.Collectors;
 
 /**
  * Created by trpet15 - Troels Blicher Petersen <troels@newtec.dk> on 4/17/16.
  */
+interface WordCount {
+    public String word();
+
+    public int amount();
+}
+class WordCountCompare implements Comparator<WordCount> {
+
+    @Override
+    public int compare(WordCount wordCount, WordCount wordCount2) {
+        if(wordCount.amount() < wordCount2.amount()) {
+            return 1;
+        }
+        else if(wordCount.amount() > wordCount2.amount()) {
+            return -1;
+        }
+        return 0;
+    }
+}
 public class WordFinder {
     static int cores = Runtime.getRuntime().availableProcessors() + 1;
-    private static ThreadPoolExecutor pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(cores);
+    private static ThreadPoolExecutor pool;
     private static List<Result> rList = new ArrayList<>();
     private static List<Result> rListLong = new ArrayList<>();
-    private static ConcurrentHashMap<Result,String> cMap = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<Result, String> cMap = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<Result, String> ListMap = new ConcurrentHashMap<>();
+
     private static Stats searchStats = new Stats() {
         @Override
         public int occurrences(String word) {
-
-            int occ = Collections.frequency(cMap.values(), word);
-//            for(Result s : cMap.values()) {
-//                System.out.println(s.path());
-//            }
-            return occ;
+            return Collections.frequency(cMap.values(), word);
         }
 
         @Override
         public List<Result> foundIn(String word) {
-            return null;
+            return cMap.entrySet().stream().filter(entry -> Objects.equals(word, entry.getValue())).map(Map.Entry::getKey).collect(Collectors.toCollection(ArrayList::new));
         }
 
         @Override
         public String mostFrequent() {
-            return null;
+            WordCount maxWord = new WordCount() {
+                @Override
+                public String word() {
+                    return null;
+                }
+
+                @Override
+                public int amount() {
+                    return 0;
+                }
+            };
+            for (String word : cMap.values()) {
+                int wordAmount = Collections.frequency(cMap.values(),word);
+                if(wordAmount> maxWord.amount()) {
+                    maxWord = new WordCount() {
+                        @Override
+                        public String word() {
+                            return word;
+                        }
+
+                        @Override
+                        public int amount() {
+                            return wordAmount;
+                        }
+                    };
+                }
+            }
+            return maxWord.word();
         }
 
         @Override
         public String leastFrequent() {
-            return null;
+            WordCount minWord = new WordCount() {
+                @Override
+                public String word() {
+                    return null;
+                }
+
+                @Override
+                public int amount() {
+                    return Collections.frequency(cMap.values(),cMap.values().toArray()[0].toString());
+                }
+            };
+            for (String word : cMap.values()) {
+                int wordAmount = Collections.frequency(cMap.values(),word);
+                if(wordAmount < minWord.amount()) {
+                    minWord = new WordCount() {
+                        @Override
+                        public String word() {
+                            return word;
+                        }
+
+                        @Override
+                        public int amount() {
+                            return wordAmount;
+                        }
+                    };
+                }
+            }
+            return minWord.word();
         }
 
         @Override
         public List<String> words() {
-            return null;
+            List<String> cMapValues = new ArrayList<>(cMap.values());
+            Set<String> hs = new HashSet<>();
+            hs.addAll(cMapValues);
+            cMapValues.clear();
+            cMapValues.addAll(hs);
+            return cMapValues;
         }
 
         @Override
         public List<String> wordsByOccurrences() {
-            return null;
+            List<WordCount> words = new ArrayList<>();
+            for (String word : cMap.values()) {
+                words.add(new WordCount() {
+                    @Override
+                    public String word() {
+                        return word;
+                    }
+
+                    @Override
+                    public int amount() {
+                        return Collections.frequency(cMap.values(),word);
+                    }
+                });
+            }
+            words.sort(new WordCountCompare());
+            ArrayList<String> orderedWords = new ArrayList<>();
+            for(int i = 0; i < words.size();i++) {
+                if(!orderedWords.contains(words.get(i).word())) {
+                    orderedWords.add(words.get(i).word());
+                }
+            }
+            return orderedWords;
         }
     };
 
@@ -74,15 +168,18 @@ public class WordFinder {
      * @param dir  the directory to search
      * @return a list of results ({@link Result}), which tell where the word was found
      */
-    public static ArrayList<Result> findAll(String word, Path dir) {
+    public static List<Result> findAll(String word, Path dir) {
+        pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(cores);
         RecursiveFindAll(word, dir);
         while (true) {
             if (pool.getActiveCount() < 1) break;
 //            else if (tick) pool.shutdownNow();
         }
-        rList.addAll(rListLong);
+//        rList.addAll(rListLong);
 //        throw new UnsupportedOperationException();
-        return (ArrayList<Result>) rList;
+//        rList.addAll(cMap.keySet());
+        pool.shutdown();
+        return new ArrayList<>(ListMap.keySet());
     }
 
     private static void RecursiveFindAll(String word, Path dir) {
@@ -134,19 +231,19 @@ public class WordFinder {
         String lineWords[] = line.split("\\s+");
         for (String word : lineWords) {
             if (word.equals(wordToFind)) {
-                synchronized (rList) {
-                    rList.add(new Result() {
-                        @Override
-                        public Path path() {
-                            return file;
-                        }
+//                synchronized (rList) {
+                ListMap.put(new Result() {
+                    @Override
+                    public Path path() {
+                        return file;
+                    }
 
-                        @Override
-                        public int line() {
-                            return ln;
-                        }
-                    });
-                }
+                    @Override
+                    public int line() {
+                        return ln;
+                    }
+                }, word);
+//                }
             }
         }
     }
@@ -154,7 +251,6 @@ public class WordFinder {
     private static void fileWordCounter(String wordToFind, Path file) throws IOException {
         int ln = 0;
         String line;
-        ArrayList<Result> localAL = new ArrayList<>();
         BufferedReader reader = Files.newBufferedReader(file);
         while ((line = reader.readLine()) != null) {
             final String currentLine = line;
@@ -162,7 +258,7 @@ public class WordFinder {
             String lineWords[] = currentLine.split("\\s+");
             for (String word : lineWords) {
                 if (word.equals(wordToFind)) {
-                    localAL.add(new Result() {
+                    ListMap.put(new Result() {
                         @Override
                         public Path path() {
                             return file;
@@ -170,18 +266,15 @@ public class WordFinder {
 
                         @Override
                         public int line() {
-                            return thisLine;
+                            return thisLine+1;
                         }
-                    });
+                    }, word);
                 }
 
             }
             ln++;
         }
         reader.close();
-        synchronized (rList) {
-            rListLong.addAll(localAL);
-        }
     }
 
     /**
@@ -198,6 +291,7 @@ public class WordFinder {
      * @return
      */
     public static Result findAny(String word, Path dir) {
+        pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(cores);
         try (
                 DirectoryStream<Path> dirStream = Files.newDirectoryStream(dir)
         ) {
@@ -256,7 +350,7 @@ public class WordFinder {
 
                         @Override
                         public int line() {
-                            return ln;
+                            return ln+1;
                         }
                     };
                     tick = true;
@@ -308,13 +402,14 @@ public class WordFinder {
      * @return the statistics of occurring words in the directory
      */
     public static Stats stats(Path dir) {
+        pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(cores);
         RecursiveStats(dir);
         while (true) {
             if (pool.getActiveCount() < 1) break;
 //            else if (tick) pool.shutdownNow();
         }
 //        throw new UnsupportedOperationException();
-        System.out.println("done");
+        pool.shutdown();
         return searchStats;
     }
 
@@ -326,7 +421,7 @@ public class WordFinder {
                 if (Files.isDirectory(path)) {
                     RecursiveStats(path);
                 } else {
-                    if (path.toString().endsWith(".js") || path.toString().endsWith(".conf") || path.toString().endsWith(".java")) {
+                    if (path.toString().endsWith(".txt") || path.toString().endsWith(".conf") || path.toString().endsWith(".java")) {
 //                        System.out.println(path.toString());
                         fileOperationStats(path);
                     }
@@ -362,19 +457,20 @@ public class WordFinder {
 
     private static void wordStatsCounter(int ln, String line, Path file) {
         String lineWords[] = line.split("\\s+");
-        for (String word : lineWords) synchronized (cMap){
-            cMap.put(new Result() {
-                @Override
-                public Path path() {
-                    return file;
-                }
+        for (String word : lineWords)
+            synchronized (cMap) {
+                cMap.put(new Result() {
+                    @Override
+                    public Path path() {
+                        return file;
+                    }
 
-                @Override
-                public int line() {
-                    return ln;
-                }
-            },word);
-        }
+                    @Override
+                    public int line() {
+                        return ln+1;
+                    }
+                }, word);
+            }
     }
 
     private static void fileWordStatsCounter(Path file) throws IOException {
@@ -385,19 +481,20 @@ public class WordFinder {
             final String currentLine = line;
             final int thisLine = ln;
             String lineWords[] = currentLine.split("\\s+");
-            for (String word : lineWords) synchronized (cMap){
-                cMap.put(new Result() {
-                    @Override
-                    public Path path() {
-                        return file;
-                    }
+            for (String word : lineWords)
+                synchronized (cMap) {
+                    cMap.put(new Result() {
+                        @Override
+                        public Path path() {
+                            return file;
+                        }
 
-                    @Override
-                    public int line() {
-                        return thisLine;
-                    }
-                },word);
-            }
+                        @Override
+                        public int line() {
+                            return thisLine+1;
+                        }
+                    }, word);
+                }
             ln++;
         }
         reader.close();
